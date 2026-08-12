@@ -263,19 +263,18 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               </p>
             )}
           </div>
-        ) : note.template === 'story' && note.storyData ? (
-          <div className="text-xs text-[#5D4037] line-clamp-3 space-y-0.5">
-            {note.storyData.project && (
-              <p className="font-semibold text-[#8C5245]">Project: {stripMarkdown(note.content) || note.storyData.sceneIdea}
-</p>
-          </div>storyData.project}</p>
-            )}
-            <p className="line-clamp-2 opacity-80">
-        ) : (
-          <p className="text-xs text-[#5D4037] leading-relaxed line-clamp-3 opacity-80 font-sans">
-            {stripMarkdown(note.content) || 'Empty page waiting for thoughts...'}
-          </p>
+            ) : note.template === 'story' && note.storyData ? (
+      <div className="text-xs text-[#0504037] line-clamp-3 space-y-0.5">
+        {note.storyData.project && (
+          <p className="font-semibold text-[#0C5245]">Project: {note.storyData.project}</p>
         )}
+        <p className="line-clamp-2 opacity-80">{stripMarkdown(note.content) || note.storyData.sceneIdea}</p>
+      </div>
+    ) : (
+      <p className="text-xs text-[#0504037] leading-relaxed line-clamp-3 opacity-80 font-sans">
+        {stripMarkdown(note.content) || 'Empty page waiting for thoughts...'}
+      </p>
+    )}
       </div>
 
       {/* Footer Info */}
