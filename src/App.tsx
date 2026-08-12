@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Note, Folder, AppSettings, NoteTemplate, CustomFont } from './types';
 import {
   initSeedDataIfNeeded,
@@ -26,7 +26,41 @@ import { SettingsModal } from './components/SettingsModal';
 import { FolderManagerModal } from './components/FolderManagerModal';
 import { MobileNav } from './components/MobileNav';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import { Plus, Feather, Sparkles, Trash2, RotateCcw } from 'lucide-react';
+import { Plus, Feather } from 'lucide-react';
+
+// Route parser helper for GitHub Pages subpath compatibility
+function parseHash(hash: string) {
+  const clean = hash.replace(/^#\/?/, '');
+  if (!clean) return { type: 'home' };
+
+  if (clean === 'settings') return { type: 'settings' };
+  if (clean === 'folders-manage') return { type: 'folders-manage' };
+  if (clean === 'favorites') return { type: 'favorites' };
+  if (clean === 'trash') return { type: 'trash' };
+
+  if (clean.startsWith('search')) {
+    const qIdx = clean.indexOf('?q=');
+    const query = qIdx !== -1 ? decodeURIComponent(clean.substring(qIdx + 3)) : '';
+    return { type: 'search', query };
+  }
+
+  if (clean.startsWith('note/')) {
+    const id = clean.substring(5);
+    return { type: 'note', id };
+  }
+
+  if (clean.startsWith('folder/')) {
+    const folderId = decodeURIComponent(clean.substring(7));
+    return { type: 'folder', folderId };
+  }
+
+  if (clean.startsWith('tag/')) {
+    const tag = decodeURIComponent(clean.substring(4));
+    return { type: 'tag', tag };
+  }
+
+  return { type: 'home' };
+}
 
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
@@ -70,6 +104,137 @@ export default function App() {
   const [customFonts, setCustomFonts] = useState<CustomFont[]>([]);
   const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
 
+  // History API Hash Helpers
+  const pushHash = (targetHash: string) => {
+    if (window.location.hash !== targetHash) {
+      window.history.pushState({ hash: targetHash }, '', targetHash);
+    }
+  };
+
+  const replaceHash = (targetHash: string) => {
+    if (window.location.hash !== targetHash) {
+      window.history.replaceState({ hash: targetHash }, '', targetHash);
+    }
+  };
+
+  // Synchronize internal App state with browser URL location hash
+  const syncStateFromLocation = useCallback((currentNotes: Note[]) => {
+    const route = parseHash(window.location.hash);
+
+    if (route.type === 'note' && route.id) {
+      const targetNote = currentNotes.find((n) => n.id === route.id);
+      if (targetNote) {
+        setEditingNote(targetNote);
+      } else {
+        setEditingNote(null);
+      }
+      setIsSettingsModalOpen(false);
+      setIsFolderModalOpen(false);
+    } else if (route.type === 'settings') {
+      setEditingNote(null);
+      setIsSettingsModalOpen(true);
+      setIsFolderModalOpen(false);
+      setActiveMobileTab('settings');
+    } else if (route.type === 'folders-manage') {
+      setEditingNote(null);
+      setIsSettingsModalOpen(false);
+      setIsFolderModalOpen(true);
+    } else if (route.type === 'favorites') {
+      setEditingNote(null);
+      setIsSettingsModalOpen(false);
+      setIsFolderModalOpen(false);
+      setShowFavoritesOnly(true);
+      setShowTrashOnly(false);
+      setSelectedFolderId('all');
+      setSelectedTag(null);
+      setActiveMobileTab('favorites');
+    } else if (route.type === 'trash') {
+      setEditingNote(null);
+      setIsSettingsModalOpen(false);
+      setIsFolderModalOpen(false);
+      setShowTrashOnly(true);
+      setShowFavoritesOnly(false);
+      setSelectedFolderId('all');
+      setSelectedTag(null);
+    } else if (route.type === 'search') {
+      setEditingNote(null);
+      setIsSettingsModalOpen(false);
+      setIsFolderModalOpen(false);
+      setShowTrashOnly(false);
+      setShowFavoritesOnly(false);
+      if (route.query !== undefined) {
+        setSearchQuery(route.query);
+      }
+      setActiveMobileTab('search');
+    } else if (route.type === 'folder' && route.folderId) {
+      setEditingNote(null);
+      setIsSettingsModalOpen(false);
+      setIsFolderModalOpen(false);
+      setShowTrashOnly(false);
+      setShowFavoritesOnly(false);
+      setSelectedFolderId(route.folderId);
+      setSelectedTag(null);
+      setActiveMobileTab('home');
+    } else if (route.type === 'tag' && route.tag) {
+      setEditingNote(null);
+      setIsSettingsModalOpen(false);
+      setIsFolderModalOpen(false);
+      setShowTrashOnly(false);
+      setShowFavoritesOnly(false);
+      setSelectedFolderId('all');
+      setSelectedTag(route.tag);
+      setActiveMobileTab('home');
+    } else {
+      // Root / Home
+      setEditingNote(null);
+      setIsSettingsModalOpen(false);
+      setIsFolderModalOpen(false);
+      setShowTrashOnly(false);
+      setShowFavoritesOnly(false);
+      setSelectedFolderId('all');
+      setSelectedTag(null);
+      setSearchQuery('');
+      setActiveMobileTab('home');
+    }
+  }, []);
+
+  // Popstate Listener for Android Back Gesture / SPA Navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      syncStateFromLocation(notes);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [notes, syncStateFromLocation]);
+
+  // Initial load
+  useEffect(() => {
+    async function loadData() {
+      try {
+        await initSeedDataIfNeeded();
+        const loadedNotes = await getAllNotes();
+        const loadedFolders = await getAllFolders();
+        const loadedSettings = await getAppSettings();
+        const loadedFonts = await loadAndApplyAllCustomFonts();
+
+        setNotes(loadedNotes);
+        setFolders(loadedFolders);
+        setSettings(loadedSettings);
+        setCustomFonts(loadedFonts);
+
+        // Initial sync from hash URL
+        syncStateFromLocation(loadedNotes);
+      } catch (err) {
+        console.error('Failed to load initial local data:', err);
+        addToast('Failed to initialize local IndexedDB storage', 'error');
+      }
+    }
+    loadData();
+  }, [syncStateFromLocation]);
+
   // PWA Install Prompt Listener
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -93,28 +258,6 @@ export default function App() {
     }
   };
 
-  // Initial load
-  useEffect(() => {
-    async function loadData() {
-      try {
-        await initSeedDataIfNeeded();
-        const loadedNotes = await getAllNotes();
-        const loadedFolders = await getAllFolders();
-        const loadedSettings = await getAppSettings();
-        const loadedFonts = await loadAndApplyAllCustomFonts();
-
-        setNotes(loadedNotes);
-        setFolders(loadedFolders);
-        setSettings(loadedSettings);
-        setCustomFonts(loadedFonts);
-      } catch (err) {
-        console.error('Failed to load initial local data:', err);
-        addToast('Failed to initialize local IndexedDB storage', 'error');
-      }
-    }
-    loadData();
-  }, []);
-
   // Theme application
   useEffect(() => {
     document.body.classList.remove('dark-espresso', 'warm-sepia');
@@ -125,7 +268,24 @@ export default function App() {
     }
   }, [settings.theme]);
 
-  // Create Note
+  // User Actions synced with History API SPA routing
+
+  const handleSelectNoteToEdit = (note: Note) => {
+    setEditingNote(note);
+    pushHash(`#/note/${note.id}`);
+  };
+
+  const handleCloseNoteEditor = () => {
+    setEditingNote(null);
+    if (window.location.hash.startsWith('#/note/')) {
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        replaceHash('#/');
+      }
+    }
+  };
+
   const handleCreateNewNote = async (template?: NoteTemplate) => {
     const newNote: Note = {
       id: `note-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -148,15 +308,14 @@ export default function App() {
     const saved = await saveNote(newNote);
     setNotes((prev) => [saved, ...prev]);
     setEditingNote(saved);
+    pushHash(`#/note/${saved.id}`);
   };
 
-  // Save Note
   const handleSaveNote = async (updatedNote: Note) => {
     const saved = await saveNote(updatedNote);
     setNotes((prev) => prev.map((n) => (n.id === saved.id ? saved : n)));
   };
 
-  // Toggle Pin
   const handleTogglePin = async (e: React.MouseEvent, note: Note) => {
     e.stopPropagation();
     const updated = { ...note, isPinned: !note.isPinned, updatedAt: Date.now() };
@@ -165,7 +324,6 @@ export default function App() {
     addToast(updated.isPinned ? 'Note pinned to top' : 'Note unpinned');
   };
 
-  // Toggle Favorite
   const handleToggleFavorite = async (e: React.MouseEvent, note: Note) => {
     e.stopPropagation();
     const updated = { ...note, isFavorite: !note.isFavorite, updatedAt: Date.now() };
@@ -174,7 +332,6 @@ export default function App() {
     addToast(updated.isFavorite ? 'Saved to favorites' : 'Removed from favorites');
   };
 
-  // Move to Trash or Permanent Delete
   const handleDeleteNote = async (id: string, permanent: boolean = false) => {
     if (permanent) {
       await deleteNotePermanently(id);
@@ -191,7 +348,6 @@ export default function App() {
     }
   };
 
-  // Restore from Trash
   const handleRestoreNote = async (id: string) => {
     const target = notes.find((n) => n.id === id);
     if (target) {
@@ -202,7 +358,6 @@ export default function App() {
     }
   };
 
-  // Duplicate Note
   const handleDuplicateNote = async (sourceNote: Note) => {
     const duplicated: Note = {
       ...sourceNote,
@@ -214,7 +369,92 @@ export default function App() {
     const saved = await saveNote(duplicated);
     setNotes((prev) => [saved, ...prev]);
     setEditingNote(saved);
+    pushHash(`#/note/${saved.id}`);
     addToast('Note duplicated');
+  };
+
+  const handleSelectFolder = (folderId: string) => {
+    setSelectedFolderId(folderId);
+    setSelectedTag(null);
+    setShowTrashOnly(false);
+    setShowFavoritesOnly(false);
+    if (folderId === 'all') {
+      pushHash('#/');
+    } else {
+      pushHash(`#/folder/${encodeURIComponent(folderId)}`);
+    }
+  };
+
+  const handleSelectTag = (tag: string | null) => {
+    setSelectedTag(tag);
+    setShowTrashOnly(false);
+    setShowFavoritesOnly(false);
+    if (tag) {
+      pushHash(`#/tag/${encodeURIComponent(tag)}`);
+    } else {
+      pushHash('#/');
+    }
+  };
+
+  const handleToggleFavorites = (fav: boolean) => {
+    setShowFavoritesOnly(fav);
+    setShowTrashOnly(false);
+    if (fav) {
+      pushHash('#/favorites');
+    } else {
+      pushHash('#/');
+    }
+  };
+
+  const handleToggleTrash = (trash: boolean) => {
+    setShowTrashOnly(trash);
+    setShowFavoritesOnly(false);
+    if (trash) {
+      pushHash('#/trash');
+    } else {
+      pushHash('#/');
+    }
+  };
+
+  const handleSearchChange = (q: string) => {
+    setSearchQuery(q);
+    if (q.trim()) {
+      replaceHash(`#/search?q=${encodeURIComponent(q.trim())}`);
+    } else if (window.location.hash.startsWith('#/search')) {
+      replaceHash('#/');
+    }
+  };
+
+  const handleOpenSettings = () => {
+    setIsSettingsModalOpen(true);
+    pushHash('#/settings');
+  };
+
+  const handleCloseSettings = () => {
+    setIsSettingsModalOpen(false);
+    if (window.location.hash === '#/settings') {
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        replaceHash('#/');
+      }
+    }
+  };
+
+  const handleOpenFolderModal = () => {
+    setIsFolderModalOpen(true);
+    pushHash('#/folders-manage');
+  };
+
+  const handleCloseFolderModal = () => {
+    setIsFolderModalOpen(false);
+    if (window.location.hash === '#/folders-manage') {
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        replaceHash('#/');
+      }
+    }
   };
 
   // Folders management
@@ -226,14 +466,14 @@ export default function App() {
     };
     const saved = await saveFolder(newFolder);
     setFolders((prev) => [...prev, saved]);
-    setIsFolderModalOpen(false);
+    handleCloseFolderModal();
     addToast(`Collection "${name}" created`);
   };
 
   const handleDeleteFolder = async (id: string) => {
     await deleteFolder(id);
     setFolders((prev) => prev.filter((f) => f.id !== id));
-    if (selectedFolderId === id) setSelectedFolderId('all');
+    if (selectedFolderId === id) handleSelectFolder('all');
     addToast('Collection deleted');
   };
 
@@ -379,12 +619,12 @@ export default function App() {
         showFavoritesOnly={showFavoritesOnly}
         isOpenMobile={isMobileMenuOpen}
         onCloseMobile={() => setIsMobileMenuOpen(false)}
-        onSelectFolder={setSelectedFolderId}
-        onSelectTag={setSelectedTag}
-        onToggleTrash={setShowTrashOnly}
-        onToggleFavorites={setShowFavoritesOnly}
-        onOpenNewFolderModal={() => setIsFolderModalOpen(true)}
-        onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+        onSelectFolder={handleSelectFolder}
+        onSelectTag={handleSelectTag}
+        onToggleTrash={handleToggleTrash}
+        onToggleFavorites={handleToggleFavorites}
+        onOpenNewFolderModal={handleOpenFolderModal}
+        onOpenSettingsModal={handleOpenSettings}
       />
 
       {/* Main App Canvas */}
@@ -392,7 +632,7 @@ export default function App() {
         {/* Top Header */}
         <Header
           searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
+          onSearchChange={handleSearchChange}
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           onOpenNewNote={handleCreateNewNote}
@@ -432,7 +672,7 @@ export default function App() {
                   note={note}
                   folders={folders}
                   viewMode={viewMode}
-                  onSelectNote={setEditingNote}
+                  onSelectNote={handleSelectNoteToEdit}
                   onTogglePin={handleTogglePin}
                   onToggleFavorite={handleToggleFavorite}
                 />
@@ -508,20 +748,17 @@ export default function App() {
         onSelectTab={(tab) => {
           setActiveMobileTab(tab);
           if (tab === 'home') {
-            setSelectedFolderId('all');
-            setSelectedTag(null);
-            setShowTrashOnly(false);
-            setShowFavoritesOnly(false);
+            handleSelectFolder('all');
           } else if (tab === 'favorites') {
-            setShowFavoritesOnly(true);
-            setShowTrashOnly(false);
+            handleToggleFavorites(true);
           } else if (tab === 'search') {
+            pushHash('#/search');
             const input = document.querySelector('input[type="text"]') as HTMLInputElement;
             if (input) input.focus();
           } else if (tab === 'folders') {
             setIsMobileMenuOpen(true);
           } else if (tab === 'settings') {
-            setIsSettingsModalOpen(true);
+            handleOpenSettings();
           }
         }}
         onOpenNewNote={() => handleCreateNewNote()}
@@ -533,7 +770,7 @@ export default function App() {
         folders={folders}
         customFonts={customFonts}
         isOpen={Boolean(editingNote)}
-        onClose={() => setEditingNote(null)}
+        onClose={handleCloseNoteEditor}
         onSaveNote={handleSaveNote}
         onDeleteNote={handleDeleteNote}
         onRestoreNote={handleRestoreNote}
@@ -544,7 +781,7 @@ export default function App() {
       <FolderManagerModal
         isOpen={isFolderModalOpen}
         folders={folders}
-        onClose={() => setIsFolderModalOpen(false)}
+        onClose={handleCloseFolderModal}
         onCreateFolder={handleCreateFolder}
         onDeleteFolder={handleDeleteFolder}
       />
@@ -553,7 +790,7 @@ export default function App() {
         isOpen={isSettingsModalOpen}
         settings={settings}
         customFonts={customFonts}
-        onClose={() => setIsSettingsModalOpen(false)}
+        onClose={handleCloseSettings}
         onUpdateSettings={handleUpdateSettings}
         onExportBackup={handleExportBackup}
         onImportBackup={handleImportBackup}
