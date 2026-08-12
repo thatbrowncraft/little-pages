@@ -1,6 +1,22 @@
 import React from 'react';
 import { Note, Folder } from '../types';
 import { Pin, Heart, BookOpen, Quote, CheckSquare, Sparkles, Feather, Image as ImageIcon } from 'lucide-react';
+function stripMarkdown(markdown: string): string {
+  if (!markdown) return '';
+  return markdown
+    .replace(/^#+\s+/gm, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/_(.*?)_/g, '$1')
+    .replace(/~~(.*?)~~/g, '$1')
+    .replace(/`{1,3}(.*?)`{1,3}/g, '$1')
+    .replace(/^\s*[\*\-\+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 interface NoteCardProps {
   note: Note;
@@ -250,13 +266,14 @@ export const NoteCard: React.FC<NoteCardProps> = ({
         ) : note.template === 'story' && note.storyData ? (
           <div className="text-xs text-[#5D4037] line-clamp-3 space-y-0.5">
             {note.storyData.project && (
-              <p className="font-semibold text-[#8C5245]">Project: {note.storyData.project}</p>
+              <p className="font-semibold text-[#8C5245]">Project: {stripMarkdown(note.content) || note.storyData.sceneIdea}
+</p>
+          </div>storyData.project}</p>
             )}
-            <p className="line-clamp-2 opacity-80">{note.content || note.storyData.sceneIdea}</p>
-          </div>
+            <p className="line-clamp-2 opacity-80">
         ) : (
           <p className="text-xs text-[#5D4037] leading-relaxed line-clamp-3 opacity-80 font-sans">
-            {note.content || 'Empty page waiting for thoughts...'}
+            {stripMarkdown(note.content) || 'Empty page waiting for thoughts...'}
           </p>
         )}
       </div>
