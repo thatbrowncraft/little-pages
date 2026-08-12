@@ -1,7 +1,7 @@
 import React from 'react';
 import { Note, Folder } from '../types';
 import { Pin, Heart, BookOpen, Quote, CheckSquare, Sparkles, Feather, Image as ImageIcon } from 'lucide-react';
-function stripMarkdown(markdown: string): string {
+function stripMarkdown(markdown?: string): string {
   if (!markdown) return '';
   return markdown
     .replace(/^#+\s+/gm, '')
