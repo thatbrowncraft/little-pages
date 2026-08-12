@@ -14,16 +14,11 @@ import {
   X,
   Pin,
   Heart,
-  Tag,
   Folder as FolderIcon,
   Download,
   Trash2,
   Copy,
   Image as ImageIcon,
-  Search,
-  Check,
-  Undo2,
-  Redo2,
   Bold,
   Italic,
   Underline,
@@ -33,11 +28,6 @@ import {
   Heading2,
   Quote as QuoteIcon,
   Minus,
-  Sparkles,
-  BookOpen,
-  Feather,
-  CheckSquare,
-  Plus,
 } from 'lucide-react';
 
 interface NoteEditorModalProps {
@@ -87,8 +77,6 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
   const [currentNote, setCurrentNote] = useState<Note | null>(null);
   const [newTagInput, setNewTagInput] = useState('');
   const [newChecklistText, setNewChecklistText] = useState('');
-  const [searchInNote, setSearchInNote] = useState('');
-  const [showSearchBox, setShowSearchBox] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const imageInputRef = useRef<HTMLInputElement>(null);
   const contentAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -237,17 +225,6 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const handleExportMarkdown = () => {
-    const md = `# ${currentNote.title}\n*Created: ${new Date(currentNote.createdAt).toLocaleDateString()}*\n\n${currentNote.content}`;
-    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${currentNote.title || 'note'}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   // Paper and font classes
   const getPaperBgClass = () => {
     switch (currentNote.paperStyle || 'ruled') {
@@ -281,43 +258,125 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-[#3E2723]/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-[#FFFDF9] border border-[#D9CDBA] rounded-xl shadow-2xl max-w-3xl w-full my-auto flex flex-col min-h-[85vh] max-h-[95vh] relative overflow-hidden animate-in fade-in zoom-in-95">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-[#3E2723]/60 backdrop-blur-xs overflow-y-auto">
+      <div className="bg-[#FFFDF9] border-0 sm:border border-[#D9CDBA] sm:rounded-xl shadow-2xl w-full max-w-3xl h-full sm:h-auto sm:min-h-[85vh] sm:max-h-[95vh] my-0 sm:my-auto flex flex-col relative overflow-hidden animate-in fade-in zoom-in-95">
         
-        {/* Top Control Header */}
-        <div className="p-3 sm:p-4 bg-[#EAE4D9] border-b border-[#D9CDBA] flex items-center justify-between gap-2 text-xs">
-          {/* Left: Status & Folder */}
-          <div className="flex items-center space-x-2">
-            <span className="text-[10px] uppercase font-bold text-[#8C7B6A] tracking-wider shrink-0">
-              {saveStatus === 'saving' ? 'Saving...' : 'Saved'}
-            </span>
+        {/* Responsive Control Header */}
+        <div className="p-2.5 sm:p-4 bg-[#EAE4D9] border-b border-[#D9CDBA] flex flex-col gap-2 shrink-0 text-xs">
+          {/* Row 1: Status, Folder Selector, and Primary Action Controls */}
+          <div className="flex items-center justify-between gap-2">
+            {/* Left: Status & Folder */}
+            <div className="flex items-center space-x-2 min-w-0">
+              <span className="text-[10px] uppercase font-bold text-[#8C7B6A] tracking-wider shrink-0">
+                {saveStatus === 'saving' ? 'Saving...' : 'Saved'}
+              </span>
 
-            <div className="h-3 w-[1px] bg-[#D3C8B4]" />
+              <div className="h-3 w-[1px] bg-[#D3C8B4] shrink-0" />
 
-            {/* Folder Select */}
-            <div className="flex items-center space-x-1">
-              <FolderIcon className="w-3.5 h-3.5 text-[#8C7B6A]" />
-              <select
-                value={currentNote.folderId}
-                onChange={(e) => updateField('folderId', e.target.value)}
-                className="bg-transparent text-xs font-bold text-[#3E2723] focus:outline-none cursor-pointer"
+              {/* Folder Select */}
+              <div className="flex items-center space-x-1 min-w-0">
+                <FolderIcon className="w-3.5 h-3.5 text-[#8C7B6A] shrink-0" />
+                <select
+                  value={currentNote.folderId}
+                  onChange={(e) => updateField('folderId', e.target.value)}
+                  className="bg-transparent text-xs font-bold text-[#3E2723] focus:outline-none cursor-pointer truncate max-w-[110px] sm:max-w-[160px]"
+                >
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Right Primary Action Controls (Pin, Favorite, Export, Duplicate, Delete, Close) */}
+            <div className="flex items-center space-x-1 sm:space-x-1.5 shrink-0">
+              {/* Pin Button */}
+              <button
+                onClick={() => updateField('isPinned', !currentNote.isPinned)}
+                className={`p-2 sm:p-1.5 rounded transition-colors ${
+                  currentNote.isPinned
+                    ? 'bg-[#4A3728] text-white'
+                    : 'text-[#8C7B6A] hover:bg-[#D9CDBA]'
+                }`}
+                title="Pin note"
+                aria-label="Pin note"
               >
-                {folders.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name}
-                  </option>
-                ))}
-              </select>
+                <Pin className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+              </button>
+
+              {/* Favorite Button */}
+              <button
+                onClick={() => updateField('isFavorite', !currentNote.isFavorite)}
+                className={`p-2 sm:p-1.5 rounded transition-colors ${
+                  currentNote.isFavorite
+                    ? 'bg-[#E59A9A] text-white'
+                    : 'text-[#8C7B6A] hover:bg-[#D9CDBA]'
+                }`}
+                title="Favorite note"
+                aria-label="Favorite note"
+              >
+                <Heart className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+              </button>
+
+              {/* Export Button */}
+              <button
+                onClick={handleExportTxt}
+                className="p-2 sm:p-1.5 text-[#8C7B6A] hover:bg-[#D9CDBA] rounded transition-colors"
+                title="Export TXT"
+                aria-label="Export TXT"
+              >
+                <Download className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+              </button>
+
+              {/* Duplicate Button */}
+              <button
+                onClick={() => onDuplicateNote(currentNote)}
+                className="p-2 sm:p-1.5 text-[#8C7B6A] hover:bg-[#D9CDBA] rounded transition-colors"
+                title="Duplicate Note"
+                aria-label="Duplicate Note"
+              >
+                <Copy className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+              </button>
+
+              {/* Existing Delete / Trash Control - Prominently accessible on mobile & desktop */}
+              <button
+                onClick={() => {
+                  if (currentNote.isDeleted) {
+                    onDeleteNote(currentNote.id, true);
+                  } else {
+                    onDeleteNote(currentNote.id, false);
+                  }
+                  onClose();
+                }}
+                className="p-2 sm:p-1.5 text-[#8C5245] hover:bg-[#E59A9A]/30 rounded transition-colors"
+                title={currentNote.isDeleted ? 'Delete Permanently' : 'Move to Trash'}
+                aria-label={currentNote.isDeleted ? 'Delete Permanently' : 'Move to Trash'}
+              >
+                <Trash2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+              </button>
+
+              {/* Close Button */}
+              <button
+                onClick={onClose}
+                className="p-2 sm:p-1.5 text-[#3E2723] hover:bg-[#D9CDBA] rounded-lg"
+                title="Close Note"
+                aria-label="Close Note"
+              >
+                <X className="w-5 h-5 sm:w-4 sm:h-4" />
+              </button>
             </div>
           </div>
 
-          {/* Right: Actions */}
-          <div className="flex items-center space-x-1.5 sm:space-x-2">
+          {/* Row 2: Secondary Selectors (Template, Font, Washi Tape, Paper Style) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 min-w-0 no-scrollbar">
             {/* Template Selector */}
             <select
               value={currentNote.template}
               onChange={(e) => updateField('template', e.target.value as NoteTemplate)}
-              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723] font-medium focus:outline-none"
+              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723] font-medium focus:outline-none shrink-0"
+              title="Note Template"
             >
               <option value="standard">Standard Note</option>
               <option value="journal">Journal Entry</option>
@@ -342,7 +401,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
                   updateField('fontStyle', val.replace('builtin:', '') as FontStyle);
                 }
               }}
-              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723] font-medium focus:outline-none max-w-[130px] truncate"
+              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723] font-medium focus:outline-none max-w-[120px] sm:max-w-[150px] truncate shrink-0"
               title="Note Font"
             >
               <optgroup label="System Fonts">
@@ -366,7 +425,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
             <select
               value={currentNote.washiTape}
               onChange={(e) => updateField('washiTape', e.target.value as WashiTapeStyle)}
-              className="hidden sm:block bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723] font-medium focus:outline-none"
+              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723] font-medium focus:outline-none shrink-0"
               title="Washi tape style"
             >
               {WASHI_TAPES.map((tape) => (
@@ -376,78 +435,23 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
               ))}
             </select>
 
-            {/* Pin Button */}
-            <button
-              onClick={() => updateField('isPinned', !currentNote.isPinned)}
-              className={`p-1.5 rounded transition-colors ${
-                currentNote.isPinned
-                  ? 'bg-[#4A3728] text-white'
-                  : 'text-[#8C7B6A] hover:bg-[#D9CDBA]'
-              }`}
-              title="Pin note"
+            {/* Paper Style Selector */}
+            <select
+              value={currentNote.paperStyle || 'ruled'}
+              onChange={(e) => updateField('paperStyle', e.target.value as PaperStyle)}
+              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723] font-medium focus:outline-none shrink-0"
+              title="Paper Style"
             >
-              <Pin className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Favorite Button */}
-            <button
-              onClick={() => updateField('isFavorite', !currentNote.isFavorite)}
-              className={`p-1.5 rounded transition-colors ${
-                currentNote.isFavorite
-                  ? 'bg-[#E59A9A] text-white'
-                  : 'text-[#8C7B6A] hover:bg-[#D9CDBA]'
-              }`}
-              title="Favorite note"
-            >
-              <Heart className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Export Dropdown */}
-            <button
-              onClick={handleExportTxt}
-              className="p-1.5 text-[#8C7B6A] hover:bg-[#D9CDBA] rounded transition-colors hidden sm:block"
-              title="Export TXT"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Duplicate */}
-            <button
-              onClick={() => onDuplicateNote(currentNote)}
-              className="p-1.5 text-[#8C7B6A] hover:bg-[#D9CDBA] rounded transition-colors hidden sm:block"
-              title="Duplicate Note"
-            >
-              <Copy className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Delete */}
-            <button
-              onClick={() => {
-                if (currentNote.isDeleted) {
-                  onDeleteNote(currentNote.id, true);
-                } else {
-                  onDeleteNote(currentNote.id, false);
-                }
-                onClose();
-              }}
-              className="p-1.5 text-[#8C5245] hover:bg-[#E59A9A]/30 rounded transition-colors"
-              title={currentNote.isDeleted ? 'Delete Permanently' : 'Move to Trash'}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Close */}
-            <button
-              onClick={onClose}
-              className="p-1.5 text-[#3E2723] hover:bg-[#D9CDBA] rounded-lg"
-            >
-              <X className="w-5 h-5" />
-            </button>
+              <option value="ruled">Ruled Paper</option>
+              <option value="grid">Grid Paper</option>
+              <option value="dots">Dotted Paper</option>
+              <option value="plain">Plain Paper</option>
+            </select>
           </div>
         </div>
 
         {/* Paper Editor Body */}
-        <div className={`flex-1 p-5 sm:p-8 overflow-y-auto space-y-6 ${getPaperBgClass()}`}>
+        <div className={`flex-1 p-4 sm:p-8 overflow-y-auto space-y-4 sm:space-y-6 ${getPaperBgClass()}`}>
           
           {/* Note Title Input */}
           <input
@@ -462,7 +466,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
 
           {/* 1. Journal Template Fields */}
           {currentNote.template === 'journal' && (
-            <div className="p-4 bg-[#EAE4D9]/50 border border-[#D9CDBA] rounded-xl space-y-3">
+            <div className="p-3 sm:p-4 bg-[#EAE4D9]/50 border border-[#D9CDBA] rounded-xl space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8C7B6A]">
@@ -519,7 +523,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
 
           {/* 2. Quote Template Fields */}
           {currentNote.template === 'quote' && (
-            <div className="p-5 bg-[#F5F2ED] border-l-4 border-[#C6A969] rounded-r-xl space-y-3 shadow-2xs">
+            <div className="p-4 sm:p-5 bg-[#F5F2ED] border-l-4 border-[#C6A969] rounded-r-xl space-y-3 shadow-2xs">
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8C7B6A] mb-1">
                   Quote Text
@@ -580,7 +584,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
 
           {/* 3. Story Template Fields */}
           {currentNote.template === 'story' && (
-            <div className="p-4 bg-[#EAE4D9]/40 border border-[#D9CDBA] rounded-xl grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div className="p-3 sm:p-4 bg-[#EAE4D9]/40 border border-[#D9CDBA] rounded-xl grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8C7B6A] mb-1">
                   Project / Novel Name
@@ -621,7 +625,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
 
           {/* 4. Interactive Checklist Mode */}
           {currentNote.template === 'checklist' && (
-            <div className="space-y-3 bg-[#FFFDF9] p-4 border border-[#D9CDBA] rounded-xl">
+            <div className="space-y-3 bg-[#FFFDF9] p-3 sm:p-4 border border-[#D9CDBA] rounded-xl">
               <p className="text-xs font-bold uppercase tracking-wider text-[#8C7B6A]">
                 Checklist Items
               </p>
@@ -652,15 +656,15 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
                     key={item.id}
                     className="flex items-center justify-between p-2 rounded bg-[#F5F2ED]/60 text-xs"
                   >
-                    <label className="flex items-center space-x-2.5 cursor-pointer flex-1">
+                    <label className="flex items-center space-x-2.5 cursor-pointer flex-1 min-w-0">
                       <input
                         type="checkbox"
                         checked={item.completed}
                         onChange={() => handleToggleChecklist(item.id)}
-                        className="w-4 h-4 accent-[#4A3728]"
+                        className="w-4 h-4 accent-[#4A3728] shrink-0"
                       />
                       <span
-                        className={`font-medium ${
+                        className={`font-medium truncate ${
                           item.completed ? 'line-through text-[#8C7B6A]' : 'text-[#3E2723]'
                         }`}
                       >
@@ -670,7 +674,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
 
                     <button
                       onClick={() => handleDeleteChecklistItem(item.id)}
-                      className="p-1 text-[#8C5245] hover:bg-[#E59A9A]/20 rounded"
+                      className="p-1 text-[#8C5245] hover:bg-[#E59A9A]/20 rounded shrink-0 ml-2"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -680,85 +684,86 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
             </div>
           )}
 
-          {/* Text Editor Toolbar */}
-          <div className="flex flex-wrap items-center gap-1 p-2 bg-[#EAE4D9]/80 border border-[#D9CDBA] rounded-lg text-xs">
+          {/* Text Editor Formatting Toolbar */}
+          <div className="flex items-center gap-1 p-2 bg-[#EAE4D9]/80 border border-[#D9CDBA] rounded-lg text-xs overflow-x-auto min-w-0 no-scrollbar">
             <button
               onClick={() => insertFormatting('**', '**')}
-              className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723]"
+              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
               title="Bold"
             >
               <Bold className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => insertFormatting('*', '*')}
-              className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723]"
+              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
               title="Italic"
             >
               <Italic className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => insertFormatting('<u>', '</u>')}
-              className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723]"
+              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
               title="Underline"
             >
               <Underline className="w-3.5 h-3.5" />
             </button>
 
-            <div className="h-4 w-[1px] bg-[#D3C8B4] mx-1" />
+            <div className="h-4 w-[1px] bg-[#D3C8B4] mx-1 shrink-0" />
 
             <button
               onClick={() => insertFormatting('# ')}
-              className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723]"
+              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
               title="Heading 1"
             >
               <Heading1 className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => insertFormatting('## ')}
-              className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723]"
+              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
               title="Heading 2"
             >
               <Heading2 className="w-3.5 h-3.5" />
             </button>
 
-            <div className="h-4 w-[1px] bg-[#D3C8B4] mx-1" />
+            <div className="h-4 w-[1px] bg-[#D3C8B4] mx-1 shrink-0" />
 
             <button
               onClick={() => insertFormatting('- ')}
-              className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723]"
+              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
               title="Bullet List"
             >
               <List className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => insertFormatting('1. ')}
-              className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723]"
+              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
               title="Numbered List"
             >
               <ListOrdered className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => insertFormatting('> ')}
-              className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723]"
+              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
               title="Quote block"
             >
               <QuoteIcon className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => insertFormatting('\n---\n')}
-              className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723]"
+              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
               title="Divider line"
             >
               <Minus className="w-3.5 h-3.5" />
             </button>
 
-            <div className="h-4 w-[1px] bg-[#D3C8B4] mx-1" />
+            <div className="h-4 w-[1px] bg-[#D3C8B4] mx-1 shrink-0" />
 
             {/* Paper style quick picker */}
             <select
               value={currentNote.paperStyle || 'ruled'}
               onChange={(e) => updateField('paperStyle', e.target.value as PaperStyle)}
-              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-1.5 py-0.5 text-[10px] text-[#3E2723]"
+              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-1.5 py-0.5 text-[10px] text-[#3E2723] shrink-0"
+              title="Quick Paper Style"
             >
               <option value="ruled">Ruled</option>
               <option value="grid">Grid</option>
@@ -770,7 +775,8 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
             <select
               value={currentNote.fontStyle || 'serif'}
               onChange={(e) => updateField('fontStyle', e.target.value as FontStyle)}
-              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-1.5 py-0.5 text-[10px] text-[#3E2723]"
+              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-1.5 py-0.5 text-[10px] text-[#3E2723] shrink-0"
+              title="Quick Font Style"
             >
               <option value="serif">Serif</option>
               <option value="sans">Sans</option>
@@ -779,7 +785,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
             </select>
           </div>
 
-          {/* Main Content Area */}
+          {/* Main Writing Area */}
           <textarea
             ref={contentAreaRef}
             value={currentNote.content}
@@ -853,7 +859,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
                   <span>#{t}</span>
                   <button
                     onClick={() => handleRemoveTag(t)}
-                    className="text-[#8C5245] hover:text-black ml-1"
+                    className="text-[#8C5245] hover:text-black ml-1 font-bold"
                   >
                     ×
                   </button>
