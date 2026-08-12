@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Note,
   Folder,
-  NoteTemplate,
   WashiTapeStyle,
   PaperStyle,
   FontStyle,
   ChecklistItem,
   NoteAttachment,
   CustomFont,
+  NoteTemplate,
 } from '../types';
 import {
   X,
@@ -28,6 +28,8 @@ import {
   Heading2,
   Quote as QuoteIcon,
   Minus,
+  Eye,
+  Edit3,
 } from 'lucide-react';
 
 interface NoteEditorModalProps {
@@ -62,6 +64,142 @@ const WASHI_TAPES: { id: WashiTapeStyle; label: string; class: string }[] = [
   { id: 'grid', label: 'Grid Tape', class: 'washi-tape-grid' },
 ];
 
+/**
+ * Lightweight inline Markdown Renderer to turn formatted strings
+ * like `# **title**` into rendered HTML headings and bold elements.
+ */
+const MarkdownRenderer: React.FC<{ content: string; className?: string }> = ({ content, className }) => {
+  if (!content || !content.trim()) {
+    return <p className="italic text-[#A6998A]">Empty note...</p>;
+  }
+
+  const lines = content.split('\n');
+
+  const formatInline = (text: string) => {
+    let html = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/&lt;u&gt;/g, '<u>')
+      .replace(/&lt;\/u&gt;/g, '</u>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+    return <span dangerouslySetInnerHTML={{ __html: html }} />;
+  };
+
+  const renderBlocks = () => {
+    const blocks: React.ReactNode[] = [];
+    let inList = false;
+    let listType: 'ul' | 'ol' = 'ul';
+    let listItems: React.ReactNode[] = [];
+
+    const flushList = () => {
+      if (listItems.length > 0) {
+        if (listType === 'ul') {
+          blocks.push(
+            <ul key={`ul-${blocks.length}`} className="list-disc list-inside my-2 space-y-1 pl-2">
+              {listItems}
+            </ul>
+          );
+        } else {
+          blocks.push(
+            <ol key={`ol-${blocks.length}`} className="list-decimal list-inside my-2 space-y-1 pl-2">
+              {listItems}
+            </ol>
+          );
+        }
+        listItems = [];
+        inList = false;
+      }
+    };
+
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+
+      // Heading 1 (# title)
+      if (line.startsWith('# ')) {
+        flushList();
+        blocks.push(
+          <h1 key={index} className="text-2xl font-bold text-[#3E2723] my-3 border-b border-[#D9CDBA]/60 pb-1">
+            {formatInline(line.slice(2))}
+          </h1>
+        );
+        return;
+      }
+
+      // Heading 2 (## title)
+      if (line.startsWith('## ')) {
+        flushList();
+        blocks.push(
+          <h2 key={index} className="text-xl font-bold text-[#3E2723] my-2">
+            {formatInline(line.slice(3))}
+          </h2>
+        );
+        return;
+      }
+
+      // Blockquote (> quote)
+      if (line.startsWith('> ')) {
+        flushList();
+        blocks.push(
+          <blockquote key={index} className="border-l-4 border-[#C6A969] pl-3 italic my-2 text-[#4A3728] bg-[#F5F2ED]/50 py-1 rounded-r">
+            {formatInline(line.slice(2))}
+          </blockquote>
+        );
+        return;
+      }
+
+      // Horizontal Divider (---)
+      if (trimmed === '---') {
+        flushList();
+        blocks.push(<hr key={index} className="my-4 border-t border-[#D9CDBA]" />);
+        return;
+      }
+
+      // Bullet List (- item or * item)
+      if (line.startsWith('- ') || line.startsWith('* ')) {
+        if (!inList || listType !== 'ul') {
+          flushList();
+          inList = true;
+          listType = 'ul';
+        }
+        listItems.push(<li key={`li-${index}`}>{formatInline(line.slice(2))}</li>);
+        return;
+      }
+
+      // Numbered List (1. item)
+      const numListMatch = line.match(/^(\d+)\.\s+(.*)/);
+      if (numListMatch) {
+        if (!inList || listType !== 'ol') {
+          flushList();
+          inList = true;
+          listType = 'ol';
+        }
+        listItems.push(<li key={`li-${index}`}>{formatInline(numListMatch[2])}</li>);
+        return;
+      }
+
+      // Regular paragraph or line break
+      flushList();
+      if (trimmed === '') {
+        blocks.push(<div key={index} className="h-3" />);
+      } else {
+        blocks.push(
+          <p key={index} className="my-1 leading-relaxed">
+            {formatInline(line)}
+          </p>
+        );
+      }
+    });
+
+    flushList();
+    return blocks;
+  };
+
+  return <div className={`space-y-1 text-[#3E2723] ${className || ''}`}>{renderBlocks()}</div>;
+};
+
 export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
   note,
   folders,
@@ -72,9 +210,9 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
   onDeleteNote,
   onRestoreNote,
   onDuplicateNote,
-  allTags,
 }) => {
   const [currentNote, setCurrentNote] = useState<Note | null>(null);
+  const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const [newTagInput, setNewTagInput] = useState('');
   const [newChecklistText, setNewChecklistText] = useState('');
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
@@ -121,7 +259,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
     setCurrentNote((prev) => (prev ? { ...prev, [field]: value } : null));
   };
 
-  // Add Tag
+  // Add / Remove Tag
   const handleAddTag = (tagToAdd: string) => {
     const trimmed = tagToAdd.trim().toLowerCase().replace(/^#/, '');
     if (!trimmed || currentNote.tags?.includes(trimmed)) return;
@@ -129,7 +267,6 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
     setNewTagInput('');
   };
 
-  // Remove Tag
   const handleRemoveTag = (tagToRemove: string) => {
     updateField('tags', currentNote.tags?.filter((t) => t !== tagToRemove) || []);
   };
@@ -166,7 +303,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
     if (!file) return;
 
     if (file.size > 5 * 1024 * 1024) {
-      alert('File size exceeds 5MB limit for browser local storage.');
+      alert('File size exceeds 5MB limit.');
       return;
     }
 
@@ -259,13 +396,13 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-[#3E2723]/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-[#FFFDF9] border-0 sm:border border-[#D9CDBA] sm:rounded-xl shadow-2xl w-full max-w-3xl h-full sm:h-auto sm:min-h-[85vh] sm:max-h-[95vh] my-0 sm:my-auto flex flex-col relative overflow-hidden animate-in fade-in zoom-in-95">
+      <div className="bg-[#FFFDF9] border-0 sm:border border-[#D9CDBA] sm:rounded-xl shadow-2xl w-full max-w-3xl h-full sm:h-auto sm:min-h-[85vh] sm:max-h-[95vh] my-0 sm:my-auto flex flex-col relative overflow-hidden">
         
         {/* Responsive Control Header */}
         <div className="p-2.5 sm:p-4 bg-[#EAE4D9] border-b border-[#D9CDBA] flex flex-col gap-2 shrink-0 text-xs">
-          {/* Row 1: Status, Folder Selector, and Primary Action Controls */}
+          
+          {/* Row 1: Status, Folder Selector, Mode Switcher, Actions */}
           <div className="flex items-center justify-between gap-2">
-            {/* Left: Status & Folder */}
             <div className="flex items-center space-x-2 min-w-0">
               <span className="text-[10px] uppercase font-bold text-[#8C7B6A] tracking-wider shrink-0">
                 {saveStatus === 'saving' ? 'Saving...' : 'Saved'}
@@ -279,7 +416,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
                 <select
                   value={currentNote.folderId}
                   onChange={(e) => updateField('folderId', e.target.value)}
-                  className="bg-transparent text-xs font-bold text-[#3E2723] focus:outline-none cursor-pointer truncate max-w-[110px] sm:max-w-[160px]"
+                  className="bg-transparent text-xs font-bold text-[#3E2723] focus:outline-none cursor-pointer truncate max-w-[100px] sm:max-w-[150px]"
                 >
                   {folders.map((f) => (
                     <option key={f.id} value={f.id}>
@@ -290,93 +427,102 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
               </div>
             </div>
 
-            {/* Right Primary Action Controls (Pin, Favorite, Export, Duplicate, Delete, Close) */}
-            <div className="flex items-center space-x-1 sm:space-x-1.5 shrink-0">
-              {/* Pin Button */}
+            {/* Mode Switcher (Edit vs Formatted Preview) */}
+            <div className="flex items-center bg-[#FFFDF9] border border-[#D9CDBA] rounded-lg p-0.5 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setMode('edit')}
+                className={`flex items-center space-x-1 px-2 py-1 rounded text-xs font-bold transition-colors ${
+                  mode === 'edit'
+                    ? 'bg-[#4A3728] text-white'
+                    : 'text-[#8C7B6A] hover:text-[#3E2723]'
+                }`}
+                title="Edit raw text"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Edit</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMode('preview')}
+                className={`flex items-center space-x-1 px-2 py-1 rounded text-xs font-bold transition-colors ${
+                  mode === 'preview'
+                    ? 'bg-[#4A3728] text-white'
+                    : 'text-[#8C7B6A] hover:text-[#3E2723]'
+                }`}
+                title="View formatted outcome"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Preview</span>
+              </button>
+            </div>
+
+            {/* Right Controls */}
+            <div className="flex items-center space-x-1 shrink-0">
               <button
                 onClick={() => updateField('isPinned', !currentNote.isPinned)}
-                className={`p-2 sm:p-1.5 rounded transition-colors ${
-                  currentNote.isPinned
-                    ? 'bg-[#4A3728] text-white'
-                    : 'text-[#8C7B6A] hover:bg-[#D9CDBA]'
+                className={`p-1.5 rounded transition-colors ${
+                  currentNote.isPinned ? 'bg-[#4A3728] text-white' : 'text-[#8C7B6A] hover:bg-[#D9CDBA]'
                 }`}
                 title="Pin note"
-                aria-label="Pin note"
               >
-                <Pin className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <Pin className="w-3.5 h-3.5" />
               </button>
 
-              {/* Favorite Button */}
               <button
                 onClick={() => updateField('isFavorite', !currentNote.isFavorite)}
-                className={`p-2 sm:p-1.5 rounded transition-colors ${
-                  currentNote.isFavorite
-                    ? 'bg-[#E59A9A] text-white'
-                    : 'text-[#8C7B6A] hover:bg-[#D9CDBA]'
+                className={`p-1.5 rounded transition-colors ${
+                  currentNote.isFavorite ? 'bg-[#E59A9A] text-white' : 'text-[#8C7B6A] hover:bg-[#D9CDBA]'
                 }`}
                 title="Favorite note"
-                aria-label="Favorite note"
               >
-                <Heart className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <Heart className="w-3.5 h-3.5" />
               </button>
 
-              {/* Export Button */}
               <button
                 onClick={handleExportTxt}
-                className="p-2 sm:p-1.5 text-[#8C7B6A] hover:bg-[#D9CDBA] rounded transition-colors"
+                className="p-1.5 text-[#8C7B6A] hover:bg-[#D9CDBA] rounded transition-colors"
                 title="Export TXT"
-                aria-label="Export TXT"
               >
-                <Download className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <Download className="w-3.5 h-3.5" />
               </button>
 
-              {/* Duplicate Button */}
               <button
                 onClick={() => onDuplicateNote(currentNote)}
-                className="p-2 sm:p-1.5 text-[#8C7B6A] hover:bg-[#D9CDBA] rounded transition-colors"
+                className="p-1.5 text-[#8C7B6A] hover:bg-[#D9CDBA] rounded transition-colors"
                 title="Duplicate Note"
-                aria-label="Duplicate Note"
               >
-                <Copy className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <Copy className="w-3.5 h-3.5" />
               </button>
 
-              {/* Existing Delete / Trash Control - Prominently accessible on mobile & desktop */}
               <button
                 onClick={() => {
-                  if (currentNote.isDeleted) {
-                    onDeleteNote(currentNote.id, true);
-                  } else {
-                    onDeleteNote(currentNote.id, false);
-                  }
+                  onDeleteNote(currentNote.id, currentNote.isDeleted);
                   onClose();
                 }}
-                className="p-2 sm:p-1.5 text-[#8C5245] hover:bg-[#E59A9A]/30 rounded transition-colors"
+                className="p-1.5 text-[#8C5245] hover:bg-[#E59A9A]/30 rounded transition-colors"
                 title={currentNote.isDeleted ? 'Delete Permanently' : 'Move to Trash'}
-                aria-label={currentNote.isDeleted ? 'Delete Permanently' : 'Move to Trash'}
               >
-                <Trash2 className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
 
-              {/* Close Button */}
               <button
                 onClick={onClose}
-                className="p-2 sm:p-1.5 text-[#3E2723] hover:bg-[#D9CDBA] rounded-lg"
-                title="Close Note"
-                aria-label="Close Note"
+                className="p-1.5 text-[#3E2723] hover:bg-[#D9CDBA] rounded-lg"
+                title="Close"
               >
-                <X className="w-5 h-5 sm:w-4 sm:h-4" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Row 2: Secondary Selectors (Template, Font, Washi Tape, Paper Style) */}
+          {/* Row 2: Selectors */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 min-w-0 no-scrollbar">
-            {/* Template Selector */}
             <select
               value={currentNote.template}
               onChange={(e) => updateField('template', e.target.value as NoteTemplate)}
               className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723] font-medium focus:outline-none shrink-0"
-              title="Note Template"
             >
               <option value="standard">Standard Note</option>
               <option value="journal">Journal Entry</option>
@@ -385,7 +531,6 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
               <option value="checklist">Checklist</option>
             </select>
 
-            {/* Font Selector */}
             <select
               value={
                 currentNote.customFontId
@@ -401,8 +546,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
                   updateField('fontStyle', val.replace('builtin:', '') as FontStyle);
                 }
               }}
-              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723] font-medium focus:outline-none max-w-[120px] sm:max-w-[150px] truncate shrink-0"
-              title="Note Font"
+              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723] font-medium focus:outline-none max-w-[120px] truncate shrink-0"
             >
               <optgroup label="System Fonts">
                 <option value="builtin:serif">Serif</option>
@@ -421,12 +565,10 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
               )}
             </select>
 
-            {/* Washi Tape Selector */}
             <select
               value={currentNote.washiTape}
               onChange={(e) => updateField('washiTape', e.target.value as WashiTapeStyle)}
               className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723] font-medium focus:outline-none shrink-0"
-              title="Washi tape style"
             >
               {WASHI_TAPES.map((tape) => (
                 <option key={tape.id} value={tape.id}>
@@ -435,12 +577,10 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
               ))}
             </select>
 
-            {/* Paper Style Selector */}
             <select
               value={currentNote.paperStyle || 'ruled'}
               onChange={(e) => updateField('paperStyle', e.target.value as PaperStyle)}
               className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723] font-medium focus:outline-none shrink-0"
-              title="Paper Style"
             >
               <option value="ruled">Ruled Paper</option>
               <option value="grid">Grid Paper</option>
@@ -462,9 +602,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
             className={`w-full bg-transparent border-b border-[#D9CDBA] pb-2 text-xl sm:text-2xl font-bold text-[#3E2723] focus:outline-none placeholder-[#A6998A] ${getFontClass()}`}
           />
 
-          {/* TEMPLATE SPECIFIC HEADERS */}
-
-          {/* 1. Journal Template Fields */}
+          {/* TEMPLATE HEADERS */}
           {currentNote.template === 'journal' && (
             <div className="p-3 sm:p-4 bg-[#EAE4D9]/50 border border-[#D9CDBA] rounded-xl space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -484,7 +622,7 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
                         date: e.target.value,
                       })
                     }
-                    className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 font-sans text-xs text-[#3E2723]"
+                    className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2 py-1 text-xs text-[#3E2723]"
                   />
                 </div>
 
@@ -507,8 +645,8 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
                           }
                           className={`px-2 py-1 rounded-md text-xs transition-all ${
                             isSel
-                              ? 'bg-[#4A3728] text-white shadow-2xs font-bold'
-                              : 'bg-[#FFFDF9] border border-[#D9CDBA] text-[#3E2723] hover:bg-[#EAE4D9]'
+                              ? 'bg-[#4A3728] text-white font-bold'
+                              : 'bg-[#FFFDF9] border border-[#D9CDBA] text-[#3E2723]'
                           }`}
                         >
                           {m.emoji} {m.label}
@@ -521,116 +659,40 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
             </div>
           )}
 
-          {/* 2. Quote Template Fields */}
           {currentNote.template === 'quote' && (
-            <div className="p-4 sm:p-5 bg-[#F5F2ED] border-l-4 border-[#C6A969] rounded-r-xl space-y-3 shadow-2xs">
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8C7B6A] mb-1">
-                  Quote Text
-                </label>
-                <textarea
-                  value={currentNote.quoteData?.quoteText || ''}
-                  onChange={(e) =>
-                    updateField('quoteData', {
-                      ...currentNote.quoteData,
-                      quoteText: e.target.value,
-                    })
-                  }
-                  placeholder="Insert memorable quote here..."
-                  rows={3}
-                  className="w-full bg-[#FFFDF9] border border-[#D9CDBA] rounded-lg p-3 text-sm italic font-serif-vintage text-[#3E2723] focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8C7B6A] mb-1">
-                    Author / Source
-                  </label>
-                  <input
-                    type="text"
-                    value={currentNote.quoteData?.author || ''}
-                    onChange={(e) =>
-                      updateField('quoteData', {
-                        ...currentNote.quoteData,
-                        author: e.target.value,
-                      })
-                    }
-                    placeholder="e.g. Virginia Woolf, Book Title"
-                    className="w-full bg-[#FFFDF9] border border-[#D9CDBA] rounded px-3 py-1.5 text-xs text-[#3E2723] focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8C7B6A] mb-1">
-                    Personal Reflection
-                  </label>
-                  <input
-                    type="text"
-                    value={currentNote.quoteData?.interpretation || ''}
-                    onChange={(e) =>
-                      updateField('quoteData', {
-                        ...currentNote.quoteData,
-                        interpretation: e.target.value,
-                      })
-                    }
-                    placeholder="Why this resonates with you..."
-                    className="w-full bg-[#FFFDF9] border border-[#D9CDBA] rounded px-3 py-1.5 text-xs text-[#3E2723] focus:outline-none"
-                  />
-                </div>
-              </div>
+            <div className="p-4 bg-[#F5F2ED] border-l-4 border-[#C6A969] rounded-r-xl space-y-3">
+              <textarea
+                value={currentNote.quoteData?.quoteText || ''}
+                onChange={(e) =>
+                  updateField('quoteData', {
+                    ...currentNote.quoteData,
+                    quoteText: e.target.value,
+                  })
+                }
+                placeholder="Insert memorable quote here..."
+                rows={2}
+                className="w-full bg-[#FFFDF9] border border-[#D9CDBA] rounded-lg p-2.5 text-sm italic font-serif-vintage text-[#3E2723] focus:outline-none"
+              />
+              <input
+                type="text"
+                value={currentNote.quoteData?.author || ''}
+                onChange={(e) =>
+                  updateField('quoteData', {
+                    ...currentNote.quoteData,
+                    author: e.target.value,
+                  })
+                }
+                placeholder="Author / Source..."
+                className="w-full bg-[#FFFDF9] border border-[#D9CDBA] rounded px-3 py-1 text-xs text-[#3E2723] focus:outline-none"
+              />
             </div>
           )}
 
-          {/* 3. Story Template Fields */}
-          {currentNote.template === 'story' && (
-            <div className="p-3 sm:p-4 bg-[#EAE4D9]/40 border border-[#D9CDBA] rounded-xl grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8C7B6A] mb-1">
-                  Project / Novel Name
-                </label>
-                <input
-                  type="text"
-                  value={currentNote.storyData?.project || ''}
-                  onChange={(e) =>
-                    updateField('storyData', {
-                      ...currentNote.storyData,
-                      project: e.target.value,
-                    })
-                  }
-                  placeholder="e.g. My Novel Project"
-                  className="w-full bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2.5 py-1 text-xs text-[#3E2723]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-[#8C7B6A] mb-1">
-                  Character Involved
-                </label>
-                <input
-                  type="text"
-                  value={currentNote.storyData?.character || ''}
-                  onChange={(e) =>
-                    updateField('storyData', {
-                      ...currentNote.storyData,
-                      character: e.target.value,
-                    })
-                  }
-                  placeholder="e.g. Main Character"
-                  className="w-full bg-[#FFFDF9] border border-[#D9CDBA] rounded px-2.5 py-1 text-xs text-[#3E2723]"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* 4. Interactive Checklist Mode */}
           {currentNote.template === 'checklist' && (
             <div className="space-y-3 bg-[#FFFDF9] p-3 sm:p-4 border border-[#D9CDBA] rounded-xl">
               <p className="text-xs font-bold uppercase tracking-wider text-[#8C7B6A]">
                 Checklist Items
               </p>
-
-              {/* Add item */}
               <div className="flex items-center space-x-2">
                 <input
                   type="text"
@@ -643,13 +705,12 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
                 <button
                   type="button"
                   onClick={handleAddChecklistItem}
-                  className="px-3 py-1.5 bg-[#4A3728] text-white rounded text-xs font-bold hover:bg-[#3E2723]"
+                  className="px-3 py-1.5 bg-[#4A3728] text-white rounded text-xs font-bold"
                 >
                   Add
                 </button>
               </div>
 
-              {/* Items List */}
               <div className="space-y-2 mt-2">
                 {currentNote.checklists?.map((item) => (
                   <div
@@ -684,118 +745,105 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
             </div>
           )}
 
-          {/* Text Editor Formatting Toolbar */}
-          <div className="flex items-center gap-1 p-2 bg-[#EAE4D9]/80 border border-[#D9CDBA] rounded-lg text-xs overflow-x-auto min-w-0 no-scrollbar">
-            <button
-              onClick={() => insertFormatting('**', '**')}
-              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
-              title="Bold"
-            >
-              <Bold className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => insertFormatting('*', '*')}
-              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
-              title="Italic"
-            >
-              <Italic className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => insertFormatting('<u>', '</u>')}
-              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
-              title="Underline"
-            >
-              <Underline className="w-3.5 h-3.5" />
-            </button>
+          {/* Formatting Toolbar (Only in Edit Mode) */}
+          {mode === 'edit' && (
+            <div className="flex items-center gap-1 p-2 bg-[#EAE4D9]/80 border border-[#D9CDBA] rounded-lg text-xs overflow-x-auto min-w-0 no-scrollbar">
+              <button
+                onClick={() => insertFormatting('**', '**')}
+                className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0"
+                title="Bold"
+              >
+                <Bold className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => insertFormatting('*', '*')}
+                className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0"
+                title="Italic"
+              >
+                <Italic className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => insertFormatting('<u>', '</u>')}
+                className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0"
+                title="Underline"
+              >
+                <Underline className="w-3.5 h-3.5" />
+              </button>
 
-            <div className="h-4 w-[1px] bg-[#D3C8B4] mx-1 shrink-0" />
+              <div className="h-4 w-[1px] bg-[#D3C8B4] mx-1 shrink-0" />
 
-            <button
-              onClick={() => insertFormatting('# ')}
-              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
-              title="Heading 1"
-            >
-              <Heading1 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => insertFormatting('## ')}
-              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
-              title="Heading 2"
-            >
-              <Heading2 className="w-3.5 h-3.5" />
-            </button>
+              <button
+                onClick={() => insertFormatting('# ')}
+                className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0"
+                title="Heading 1"
+              >
+                <Heading1 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => insertFormatting('## ')}
+                className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0"
+                title="Heading 2"
+              >
+                <Heading2 className="w-3.5 h-3.5" />
+              </button>
 
-            <div className="h-4 w-[1px] bg-[#D3C8B4] mx-1 shrink-0" />
+              <div className="h-4 w-[1px] bg-[#D3C8B4] mx-1 shrink-0" />
 
-            <button
-              onClick={() => insertFormatting('- ')}
-              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
-              title="Bullet List"
-            >
-              <List className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => insertFormatting('1. ')}
-              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
-              title="Numbered List"
-            >
-              <ListOrdered className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => insertFormatting('> ')}
-              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
-              title="Quote block"
-            >
-              <QuoteIcon className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => insertFormatting('\n---\n')}
-              className="p-2 sm:p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0 min-w-[32px] flex items-center justify-center"
-              title="Divider line"
-            >
-              <Minus className="w-3.5 h-3.5" />
-            </button>
+              <button
+                onClick={() => insertFormatting('- ')}
+                className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0"
+                title="Bullet List"
+              >
+                <List className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => insertFormatting('1. ')}
+                className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0"
+                title="Numbered List"
+              >
+                <ListOrdered className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => insertFormatting('> ')}
+                className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0"
+                title="Quote block"
+              >
+                <QuoteIcon className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => insertFormatting('\n---\n')}
+                className="p-1.5 hover:bg-[#D9CDBA] rounded text-[#3E2723] shrink-0"
+                title="Divider line"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
 
-            <div className="h-4 w-[1px] bg-[#D3C8B4] mx-1 shrink-0" />
-
-            {/* Paper style quick picker */}
-            <select
-              value={currentNote.paperStyle || 'ruled'}
-              onChange={(e) => updateField('paperStyle', e.target.value as PaperStyle)}
-              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-1.5 py-0.5 text-[10px] text-[#3E2723] shrink-0"
-              title="Quick Paper Style"
+          {/* MAIN WRITING / FORMATTED VIEW CANVAS */}
+          {mode === 'edit' ? (
+            <textarea
+              ref={contentAreaRef}
+              value={currentNote.content}
+              onChange={(e) => updateField('content', e.target.value)}
+              placeholder="Write your thoughts, memories, quotes, or story ideas here..."
+              rows={12}
+              className={`w-full bg-transparent border-none text-sm sm:text-base text-[#3E2723] focus:outline-none resize-none leading-relaxed ${getFontClass()}`}
+            />
+          ) : (
+            <div
+              onClick={() => setMode('edit')}
+              className="min-h-[250px] cursor-pointer group relative rounded-lg p-2 transition-all hover:ring-1 hover:ring-[#D9CDBA]"
+              title="Click anywhere to edit"
             >
-              <option value="ruled">Ruled</option>
-              <option value="grid">Grid</option>
-              <option value="dots">Dots</option>
-              <option value="plain">Plain</option>
-            </select>
+              <MarkdownRenderer content={currentNote.content} className={getFontClass()} />
+              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-[#4A3728] text-white text-[10px] px-2 py-0.5 rounded shadow">
+                Click to edit
+              </div>
+            </div>
+          )}
 
-            {/* Font quick picker */}
-            <select
-              value={currentNote.fontStyle || 'serif'}
-              onChange={(e) => updateField('fontStyle', e.target.value as FontStyle)}
-              className="bg-[#FFFDF9] border border-[#D9CDBA] rounded px-1.5 py-0.5 text-[10px] text-[#3E2723] shrink-0"
-              title="Quick Font Style"
-            >
-              <option value="serif">Serif</option>
-              <option value="sans">Sans</option>
-              <option value="handwriting">Handwriting</option>
-              <option value="typewriter">Typewriter</option>
-            </select>
-          </div>
-
-          {/* Main Writing Area */}
-          <textarea
-            ref={contentAreaRef}
-            value={currentNote.content}
-            onChange={(e) => updateField('content', e.target.value)}
-            placeholder="Write your thoughts, memories, quotes, or story ideas here..."
-            rows={12}
-            className={`w-full bg-transparent border-none text-sm sm:text-base text-[#3E2723] focus:outline-none resize-none leading-relaxed ${getFontClass()}`}
-          />
-
-          {/* Local Attachments Section */}
+          {/* Attachments Section */}
           {currentNote.attachments && currentNote.attachments.length > 0 && (
             <div className="border-t border-[#D9CDBA] pt-4 space-y-2">
               <p className="text-xs font-bold uppercase tracking-wider text-[#8C7B6A]">
@@ -807,18 +855,10 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
                     key={att.id}
                     className="relative group border border-[#D9CDBA] rounded-lg overflow-hidden bg-[#FFFDF9]"
                   >
-                    <img
-                      src={att.dataUrl}
-                      alt={att.name}
-                      className="w-full h-24 object-cover"
-                    />
-                    <div className="p-1 bg-[#3E2723]/80 text-white text-[10px] truncate">
-                      {att.name}
-                    </div>
+                    <img src={att.dataUrl} alt={att.name} className="w-full h-24 object-cover" />
                     <button
                       onClick={() => handleRemoveAttachment(att.id)}
                       className="absolute top-1 right-1 p-1 bg-[#8C5245] text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Remove image"
                     >
                       <X className="w-3 h-3" />
                     </button>
