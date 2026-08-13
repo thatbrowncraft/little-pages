@@ -298,30 +298,54 @@ useEffect(() => {
     );
   };
 
-  // Local Image Attachment
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+// Local Image Attachment with auto-compression for mobile photos
+const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    if (file.size > 5 * 1024 * 1024) {
-      alert('File size exceeds 5MB limit.');
-      return;
-    }
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const img = new Image();
+    img.onload = () => {
+      // Auto-resize high-res camera photos to max 1200px width/height
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+      const maxDim = 1200;
 
-    const reader = new FileReader();
-    reader.onload = () => {
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
+
+      const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
       const newAtt: NoteAttachment = {
         id: `att-${Date.now()}`,
         name: file.name,
-        type: file.type,
-        dataUrl: reader.result as string,
-        size: file.size,
+        type: 'image/jpeg',
+        dataUrl: compressedDataUrl,
+        size: compressedDataUrl.length,
       };
+
       updateField('attachments', [...(currentNote.attachments || []), newAtt]);
       if (imageInputRef.current) imageInputRef.current.value = '';
     };
-    reader.readAsDataURL(file);
+    img.src = event.target?.result as string;
   };
+  reader.readAsDataURL(file);
+};
+
 
   const handleRemoveAttachment = (id: string) => {
     updateField(
