@@ -874,24 +874,26 @@ const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     <p className="text-xs font-bold uppercase tracking-wider text-[#8C7B6A]">
       Local Image Attachments
     </p>
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col items-center gap-3">
       {currentNote.attachments.map((att) => (
         <div
           key={att.id}
-          className="relative border border-[#D9CDBA] rounded-xl overflow-hidden bg-[#FFFDF9] p-1 shadow-2xs"
+          className="relative border border-[#D9CDBA] rounded-xl overflow-hidden bg-[#FFFDF9] p-1.5 shadow-2xs w-full flex justify-center items-center"
         >
           <img
             src={att.dataUrl}
             alt={att.name}
-            className="w-full h-auto max-h-[600px] object-contain rounded-lg"
+            className="w-auto h-auto max-h-72 max-w-full object-contain rounded-lg"
           />
-          <button
-            onClick={() => handleRemoveAttachment(att.id)}
-            className="absolute top-3 right-3 p-1.5 bg-[#8C5245] text-white rounded-full shadow-md hover:bg-black transition-colors"
-            title="Remove Image"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {mode === 'edit' && (
+            <button
+              onClick={() => handleRemoveAttachment(att.id)}
+              className="absolute top-2 right-2 p-1.5 bg-[#8C5245] text-white rounded-full shadow-md hover:bg-black transition-colors"
+              title="Remove Image"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       ))}
     </div>
