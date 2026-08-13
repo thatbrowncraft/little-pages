@@ -869,29 +869,34 @@ const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
           )}
 
           {/* Attachments Section */}
-          {currentNote.attachments && currentNote.attachments.length > 0 && (
-            <div className="border-t border-[#D9CDBA] pt-4 space-y-2">
-              <p className="text-xs font-bold uppercase tracking-wider text-[#8C7B6A]">
-                Local Image Attachments
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {currentNote.attachments.map((att) => (
-                  <div
-                    key={att.id}
-                    className="relative group border border-[#D9CDBA] rounded-lg overflow-hidden bg-[#FFFDF9]"
-                  >
-                    <img src={att.dataUrl} alt={att.name} className="w-full h-24 object-cover" />
-                    <button
-                      onClick={() => handleRemoveAttachment(att.id)}
-                      className="absolute top-1 right-1 p-1 bg-[#8C5245] text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+{currentNote.attachments && currentNote.attachments.length > 0 && (
+  <div className="border-t border-[#D9CDBA] pt-4 space-y-3">
+    <p className="text-xs font-bold uppercase tracking-wider text-[#8C7B6A]">
+      Local Image Attachments
+    </p>
+    <div className="flex flex-col gap-4">
+      {currentNote.attachments.map((att) => (
+        <div
+          key={att.id}
+          className="relative border border-[#D9CDBA] rounded-xl overflow-hidden bg-[#FFFDF9] p-1 shadow-2xs"
+        >
+          <img
+            src={att.dataUrl}
+            alt={att.name}
+            className="w-full h-auto max-h-[600px] object-contain rounded-lg"
+          />
+          <button
+            onClick={() => handleRemoveAttachment(att.id)}
+            className="absolute top-3 right-3 p-1.5 bg-[#8C5245] text-white rounded-full shadow-md hover:bg-black transition-colors"
+            title="Remove Image"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 
           {/* Tags Manager */}
           <div className="border-t border-[#D9CDBA] pt-4 space-y-2">
