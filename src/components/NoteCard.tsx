@@ -133,10 +133,10 @@ export const NoteCard: React.FC<NoteCardProps> = ({
               </h3>
             </div>
             <p className="text-xs text-[#8C7B6A] line-clamp-1 mt-0.5 font-sans">
-              {note.template === 'quote' && note.quoteData?.quoteText
-                ? `"${note.quoteData.quoteText}"`
-                : note.content || 'Empty note...'}
-            </p>
+  {note.template === 'quote' && note.quoteData?.quoteText
+    ? `"${note.quoteData.quoteText}"`
+    : stripMarkdown(note.content) || 'Empty note...'}
+       </p>
           </div>
         </div>
 
