@@ -214,16 +214,18 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
   const [currentNote, setCurrentNote] = useState<Note | null>(null);
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const [newTagInput, setNewTagInput] = useState('');
-  const [newChecklistText, setNewChecklistText] = useState('');
+  const [newCuseEffect(()hecklistText, setNewChecklistText] = useState('');
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const imageInputRef = useRef<HTMLInputElement>(null);
   const contentAreaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
-    if (note) {
-      setCurrentNote({ ...note });
-    }
-  }, [note]);
+useEffect(() => {
+  if (note) {
+    setCurrentNote({ ...note });
+    // Open existing notes in Preview mode; open blank/new notes in Edit mode
+    setMode(note.content ? 'preview' : 'edit');
+  }
+}, [note]);
 
   // Autosave timer
   useEffect(() => {
