@@ -208,13 +208,12 @@ export const NoteEditorModal: React.FC<NoteEditorModalProps> = ({
   onClose,
   onSaveNote,
   onDeleteNote,
-  onRestoreNote,
   onDuplicateNote,
 }) => {
   const [currentNote, setCurrentNote] = useState<Note | null>(null);
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const [newTagInput, setNewTagInput] = useState('');
-  const [newCuseEffect(()hecklistText, setNewChecklistText] = useState('');
+  const [newChecklistText, setNewChecklistText] = useState('');
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const imageInputRef = useRef<HTMLInputElement>(null);
   const contentAreaRef = useRef<HTMLTextAreaElement>(null);
